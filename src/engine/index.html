@@ -170,6 +170,12 @@
         color: var(--muted);
         font-size: 13px;
       }
+      .actions {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 10px;
+      }
       .hint {
         margin-top: 10px;
         color: var(--muted);
@@ -200,6 +206,10 @@
           <div class="stat">
             <div class="label">BEST</div>
             <div class="value" id="best">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">BEST TIME</div>
+            <div class="value" id="bestTime">—</div>
           </div>
         </div>
       </header>
@@ -234,7 +244,10 @@
           <div class="card">
             <h2 id="overTitle">Game Over</h2>
             <p id="overMsg">No more moves. Try again, my son.</p>
-            <button id="again">Play Again</button>
+            <div class="actions">
+              <button id="again">Play Again</button>
+              <button id="dismiss" style="display: none">Continue</button>
+            </div>
             <div class="hint">Tip: Don’t spam moves. Keep big tiles in a corner.</div>
           </div>
         </div>
@@ -246,10 +259,12 @@
         const N = 4;
         const scoreEl = document.getElementById('score');
         const bestEl = document.getElementById('best');
+        const bestTimeEl = document.getElementById('bestTime');
         const tilesEl = document.getElementById('tiles');
         const overlay = document.getElementById('overlay');
         const overTitle = document.getElementById('overTitle');
         const overMsg = document.getElementById('overMsg');
+        const btnDismiss = document.getElementById('dismiss');
 
         const btnNew = document.getElementById('new');
         const btnUndo = document.getElementById('undo');
@@ -258,8 +273,9 @@
 
         const LS_BEST = 'vanilla2048_best';
         const LS_STATE = 'vanilla2048_state';
+        const LS_BEST_TIME = 'vanilla2048_best_time';
 
-        let grid, score, best, won;
+        let grid, score, best, won, startAt, bestTime, winDismissed;
         let prevState = null; // for undo
 
         const colors = new Map([
@@ -287,6 +303,8 @@
             score: state.score,
             best: state.best,
             won: state.won,
+            startAt: state.startAt,
+            winDismissed: state.winDismissed,
           };
         }
 
@@ -294,10 +312,11 @@
           prevState = cloneState({ grid, score, best, won });
         }
 
-        function setOverlay(show, title = 'Game Over', msg = 'No more moves.') {
+        function setOverlay(show, title = 'Game Over', msg = 'No more moves.', allowClose = false) {
           overlay.classList.toggle('show', show);
           overTitle.textContent = title;
           overMsg.textContent = msg;
+          btnDismiss.style.display = allowClose ? 'inline-block' : 'none';
         }
 
         function loadBest() {
@@ -305,13 +324,32 @@
           return Number.isFinite(v) ? v : 0;
         }
 
+        function loadBestTime() {
+          const v = Number(localStorage.getItem(LS_BEST_TIME) || NaN);
+          return Number.isFinite(v) && v > 0 ? v : null;
+        }
+
+        function formatMs(ms) {
+          if (ms == null) return '—';
+          const totalSec = Math.round(ms / 1000);
+          const m = Math.floor(totalSec / 60);
+          const s = totalSec % 60;
+          return `${m}:${String(s).padStart(2, '0')}`;
+        }
+
         function setBest(v) {
           best = Math.max(best, v);
           localStorage.setItem(LS_BEST, String(best));
         }
 
+        function setBestTime(ms) {
+          if (ms == null) return;
+          bestTime = bestTime == null ? ms : Math.min(bestTime, ms);
+          localStorage.setItem(LS_BEST_TIME, String(bestTime));
+        }
+
         function serialize() {
-          return JSON.stringify({ grid, score, best, won });
+          return JSON.stringify({ grid, score, best, won, startAt });
         }
 
         function persist() {
@@ -329,6 +367,7 @@
             score = Number(s.score) || 0;
             best = Math.max(loadBest(), Number(s.best) || 0);
             won = !!s.won;
+            startAt = Number(s.startAt) || Date.now();
             return true;
           } catch {
             return false;
@@ -387,7 +426,7 @@
               t.style.color = style.fg;
               // font size adjust
               if (v >= 1024) t.style.fontSize = '22px';
-              if (v >= 8192) t.style.fontSize = '18px';
+          if (v >= 8192) t.style.fontSize = '18px';
 
               t.style.gridRowStart = r + 1;
               t.style.gridColumnStart = c + 1;
@@ -402,6 +441,7 @@
           }
           scoreEl.textContent = String(score);
           bestEl.textContent = String(best);
+          bestTimeEl.textContent = formatMs(bestTime);
         }
 
         function slideLine(line) {
@@ -467,7 +507,14 @@
 
           savePrev(); // after confirming move? keep before state for undo
           // Actually we want undo to return to "before"
-          prevState = { grid: before, score: beforeScore, best, won: beforeWon };
+          prevState = {
+            grid: before,
+            score: beforeScore,
+            best,
+            won: beforeWon,
+            startAt,
+            winDismissed,
+          };
 
           if (score > best) setBest(score);
 
@@ -479,11 +526,24 @@
             pop = [r, c];
           }
 
+          const newlyWon = !beforeWon && won;
+          let achievedTime = null;
+          if (newlyWon) {
+            achievedTime = Date.now() - startAt;
+            setBestTime(achievedTime);
+            winDismissed = false;
+          }
+
           persist();
           render(pop);
 
           if (won) {
-            setOverlay(true, 'You Win', '2048 reached. Keep going if you want. GOOD JOB.');
+            const clearTimeMsg = newlyWon
+              ? `Time: ${formatMs(achievedTime)} · Best: ${formatMs(bestTime)}`
+              : `Best: ${formatMs(bestTime)}`;
+            if (!winDismissed) {
+              setOverlay(true, 'You Win', `2048 reached. ${clearTimeMsg} Keep going if you want.`, true);
+            }
           } else if (!canMove()) {
             setOverlay(true, 'Game Over', 'No more moves. Reset and do it better, my son.');
           }
@@ -494,6 +554,9 @@
           score = 0;
           won = false;
           best = loadBest();
+          bestTime = loadBestTime();
+          startAt = Date.now();
+          winDismissed = false;
           prevState = null;
           spawn();
           spawn();
@@ -508,6 +571,9 @@
           score = prevState.score;
           won = prevState.won;
           best = loadBest();
+          bestTime = loadBestTime();
+          startAt = prevState.startAt || Date.now();
+          winDismissed = prevState.winDismissed || false;
           prevState = null;
           persist();
           setOverlay(false);
@@ -561,6 +627,10 @@
         btnNew.addEventListener('click', newGame);
         btnUndo.addEventListener('click', undo);
         btnAgain.addEventListener('click', newGame);
+        btnDismiss.addEventListener('click', () => {
+          winDismissed = true;
+          setOverlay(false);
+        });
 
         window.addEventListener('keydown', onKey, { passive: false });
         boardEl.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -568,6 +638,8 @@
 
         // init
         best = loadBest();
+        bestTime = loadBestTime();
+        winDismissed = false;
         if (!restore()) newGame();
         else {
           render();
