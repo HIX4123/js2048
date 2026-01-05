@@ -1,0 +1,11 @@
+\usepackage{fvextra}
+
+% Pandoc highlight macros(\KeywordTok 등)가 동작하려면 commandchars가 필요
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+  commandchars=\\\{\},
+  fontsize=\small
+}
+
+\usepackage{etoolbox}
+\AtBeginEnvironment{Highlighting}{\par\vspace{0.6em}}
+\AtEndEnvironment{Highlighting}{\vspace{0.6em}\par}
