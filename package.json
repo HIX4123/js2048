@@ -196,6 +196,7 @@
     "yocto-queue": "^0.1.0"
   },
   "scripts": {
+    "test": "echo \"No automated tests yet\"",
     "build": "npx esbuild src/ui/script.js --bundle --format=iife --outfile=dist/bundle.js",
     "lint:css": "stylelint \"**/*.css\"",
     "lint:css:fix": "stylelint \"**/*.css\" --fix",
